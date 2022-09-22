@@ -66,11 +66,7 @@ And finally, we will deploy the **ASP.NET Core Web API** application to Azure.
 
 ![Configure your new project](md-images/326751c8c729d6f3f4df012ecc1b25e50842d88fb060779a7e0cb65f678013f6.png)  
 
-![Additional information](md-images/864d4dced70426006a4d89d11602e92413aff3be5a5bfbadac695e02e0268673.png)  
-
->:point_up: Notice I unchecked **Use controllers (uncheck to use minimal APIs)** to create a minimal API, and checked **Enable OpenAPI support** to include **Swagger**.
-
-You can learn more about minimal APIs here: [Minimal APIs overview](https://docs.microsoft.com/en-us/aspnet/core/fundamentals/minimal-apis?view=aspnetcore-6.0>)
+ ![image-20220921200142654](md-images/image-20220921200142654.png)
 
 Run the application to make sure the default templates is working.
 
@@ -148,17 +144,10 @@ builder.Services.AddAuthentication(JwtBearerDefaults.AuthenticationScheme)
 builder.Services.AddAuthorization();
 ```
 
-At the bottom, before **app.Run();** add the following two lines:
+At the bottom, before `app.UseAuthorization();` add the following two lines:
 
 ```c#
 app.UseAuthentication();
-app.UseAuthorization();
-```
-
-And finally, in the **app.MapGet("/weatherforecast"** code, add the following line after **.WithName("GetWeatherForecast")**:
-
-```c#
-.RequireAuthorization()
 ```
 
 The complete *Program.cs* file should look like this now:
@@ -168,6 +157,8 @@ using Microsoft.Identity.Web;
 using Microsoft.AspNetCore.Authentication.JwtBearer;
 
 var builder = WebApplication.CreateBuilder(args);
+
+builder.Services.AddControllers();
 
 // Add services to the container.
 builder.Services.AddAuthentication(JwtBearerDefaults.AuthenticationScheme)
@@ -194,34 +185,51 @@ if (app.Environment.IsDevelopment())
 
 app.UseHttpsRedirection();
 
-var summaries = new[]
-{
-    "Freezing", "Bracing", "Chilly", "Cool", "Mild", "Warm", "Balmy", "Hot", "Sweltering", "Scorching"
-};
-
-app.MapGet("/weatherforecast", () =>
-{
-    var forecast = Enumerable.Range(1, 5).Select(index =>
-        new WeatherForecast
-        (
-            DateTime.Now.AddDays(index),
-            Random.Shared.Next(-20, 55),
-            summaries[Random.Shared.Next(summaries.Length)]
-        ))
-        .ToArray();
-    return forecast;
-})
-.WithName("GetWeatherForecast")
-.RequireAuthorization();
-
 app.UseAuthentication();
 app.UseAuthorization();
 
-app.Run();
+app.MapControllers();
 
-internal record WeatherForecast(DateTime Date, int TemperatureC, string? Summary)
+app.Run();
+```
+
+Add the `[Authorize]` attribute to the *WeatherForecastController*. It should look like this:
+
+```c#
+using Microsoft.AspNetCore.Authorization;
+using Microsoft.AspNetCore.Mvc;
+
+namespace SecureWebApi.Controllers
 {
-    public int TemperatureF => 32 + (int)(TemperatureC / 0.5556);
+    [Authorize]
+    [ApiController]
+    [Route("[controller]")]
+    public class WeatherForecastController : ControllerBase
+    {
+        private static readonly string[] Summaries = new[]
+        {
+            "Freezing", "Bracing", "Chilly", "Cool", "Mild", "Warm", "Balmy", "Hot", "Sweltering", "Scorching"
+        };
+
+        private readonly ILogger<WeatherForecastController> _logger;
+
+        public WeatherForecastController(ILogger<WeatherForecastController> logger)
+        {
+            _logger = logger;
+        }
+
+        [HttpGet(Name = "GetWeatherForecast")]
+        public IEnumerable<WeatherForecast> Get()
+        {
+            return Enumerable.Range(1, 5).Select(index => new WeatherForecast
+            {
+                Date = DateTime.Now.AddDays(index),
+                TemperatureC = Random.Shared.Next(-20, 55),
+                Summary = Summaries[Random.Shared.Next(Summaries.Length)]
+            })
+            .ToArray();
+        }
+    }
 }
 ```
 
@@ -232,13 +240,13 @@ Replace the contents of the *appsettings.json* file with this:
 ```json
 {
   "AzureAd": {
-    "Instance": "",
-    "Domain": "",
-    "TenantId": "",
-    "ClientId": "",
+    "Instance": "https://{YOUR-TENANT-NAME-HERE}.b2clogin.com/",
+    "Domain": "{YOUR-TENANT-NAME-HERE}.onmicrosoft.com",
+    "TenantId": "{REPLACE-WITH-YOUR-TENANT-ID}",
+    "ClientId": "{REPLACE-WITH-YOUR-CLIENT-ID}",
     "CallbackPath": "/signin-oidc",
     "Scopes": "access_as_user",
-    "ClientSecret": "",
+    "ClientSecret": "{REPLACE-WITH-YOUR-CLIENT-SECRET}",
     "ClientCertificates": [],
     "SignUpSignInPolicyId": "b2c_1_social_susi"
   },
@@ -247,7 +255,7 @@ Replace the contents of the *appsettings.json* file with this:
     "Scopes": "user.read"
   },
   "DownstreamApi": {
-    "BaseUrl": "",
+    "BaseUrl": "{REPLACE-WITH-YOUR-SECURE-WEB-API-URL}",
     "Scopes": "user.read"
   },
   "Logging": {
